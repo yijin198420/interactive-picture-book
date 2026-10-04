@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<script>
+// 游戏必须由本地服务器提供；直接打开文件会造成模块、语音和新素材缓存不一致。
+if (location.protocol === 'file:') {
+  location.replace('http://127.0.0.1:8123/' + location.search + location.hash);
+}
+</script>
+<title>Little Feather's Spring · A Gentle Growing-Up Journey</title>
+<meta name="description" content="A gentle story game for ages 5–8. Click, drag, connect and follow simple rhythms to collect four Growth Feathers.">
+<meta name="theme-color" content="#182233">
+<link rel="icon" type="image/svg+xml" href="assets/icons/black-feather.svg">
+<link rel="preload" as="image" href="assets/scenes/handpainted-rework-v2/windy-dusk-web.webp">
+<link rel="preload" as="image" href="assets/scenes/enhanced-scenes/characters-web/xiaoyu_happy.webp">
+  <link rel="stylesheet" href="css/style.css?v=37">
+</head>
+<body>
+
+<!-- 全局一键静音：故事与小游戏中始终可用 -->
+<button id="btnQuickMute" class="quick-mute" aria-label="Mute all sound" aria-pressed="false">Sound On</button>
+
+<!-- 动态场景背景层（增强版插画 · 动画 WebP，双缓冲淡入切换） -->
+<img class="bg-scene" id="bgSceneA" alt="" aria-hidden="true">
+<img class="bg-scene" id="bgSceneB" alt="" aria-hidden="true">
+<div id="sceneAtmosphere" aria-hidden="true">
+  <i class="atmo-light"></i>
+  <i class="atmo-orb atmo-orb-a"></i>
+  <i class="atmo-orb atmo-orb-b"></i>
+</div>
+
+<!-- 游戏画布：角色 / 小游戏 / 特效都画在这里（背景图模式下为透明叠加层） -->
+<canvas id="stage"></canvas>
+
+<!-- 页面内的标准音频元素：负责英文旁白，也便于浏览器检查播放状态。 -->
+<audio id="narrAudio" preload="auto" hidden aria-hidden="true"></audio>
+
+<!-- 水彩章节转场层（圆形揭开/合拢的视觉遮罩） -->
+<div id="iris" aria-hidden="true"></div>
+
+<!-- 顶部 HUD：成长指标徽章 + 暂停按钮 -->
+<div id="hud" class="hidden">
+  <div id="badges">
+    <span class="badge" id="badgeFeather" title="Growth Feathers">🪶 <b>0</b><small>/4</small></span>
+    <span class="badge" id="badgeStar" title="Story Stickers">▣ <b>0</b></span>
+    <span class="badge badge-points" id="badgePoints" title="Feather Light Trail in this chapter">
+      <span class="points-number">✦ <b>0</b><small>/100</small></span>
+      <span class="trail-pips" id="badgeTrailPips" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+    </span>
+  </div>
+  <button id="btnPause" class="round-btn" aria-label="Pause menu">⏸</button>
+</div>
+
+<!-- 关键动作获得的非阻塞羽光反馈：不打断小游戏，也从不显示扣分。 -->
+<div id="pointBurst" class="hidden" role="status" aria-live="polite">
+  <strong id="pointBurstValue">✦ +10</strong>
+  <span class="point-burst-copy">
+    <span id="pointBurstLabel">A new light joined the trail</span>
+    <small id="pointBurstMilestone">The next Feather Light is growing</small>
+  </span>
+</div>
+
+<!-- 小游戏顶部的任务提示条 -->
+<div id="gameHint" class="hidden"><span id="gameHintIcon">💡</span><span id="gameHintText"></span></div>
+
+<!-- 对话框（旁白 / 角色台词 + 字幕） -->
+<div id="dialogue" class="hidden">
+  <div id="dlgPortraitWrap" class="hidden" aria-hidden="true">
+    <img id="dlgPortrait" alt="">
+  </div>
+  <div class="dlg-copy">
+    <div id="dlgWho" class="hidden"></div>
+    <div id="dlgText"></div>
+  </div>
+  <button id="btnReadAloud" class="read-aloud" type="button" aria-label="Read this subtitle aloud" title="Read this subtitle aloud">
+    <span class="read-icon" aria-hidden="true">🔊</span><span class="read-label">Read Aloud</span>
+  </button>
+  <div id="dlgNext" aria-hidden="true">▸</div>
+</div>
+
+<!-- 温和提示气泡（替代任何失败惩罚） -->
+<div id="toast" class="hidden"></div>
+
+<!-- 选择题大卡片（善意 / 方向 / 身份选择） -->
+<div id="choiceWrap" class="hidden">
+  <div id="choiceQuestion"></div>
+  <div id="choiceCards"></div>
+</div>
+
+<!-- 标题页 -->
+<div id="screenTitle" class="screen screen-clear">
+  <div class="title-stage">
+    <header class="title-plaque">
+      <div class="title-kicker"><span>PROLOGUE</span> AFTER SPRING</div>
+      <h1 class="game-title">Little Feather's Spring</h1>
+      <p class="game-sub">Follow the wind, gather the clues, and find the way home.</p>
+    </header>
+    <div class="title-mascot" aria-hidden="true">
+      <span class="mascot-spark spark-one">✦</span>
+      <span class="mascot-spark spark-two">✦</span>
+      <div class="mascot-glow"></div>
+      <img src="assets/scenes/enhanced-scenes/characters-web/xiaoyu_happy.webp" alt="">
+      <div class="mascot-bubble">When the wind rests,<br>the road goes on.</div>
+    </div>
+    <nav class="title-menu" aria-label="Choose how to play">
+      <div class="menu-heading"><span>Choose a Chapter</span><i>Start anywhere · Progress saves automatically</i></div>
+      <div class="title-tags" aria-label="Game features">
+        <span>4 Chapters</span><span>5 Feather Lights Each</span><span>No Points Lost</span>
+      </div>
+      <div class="chapter-directory" id="chapterDirectory" aria-label="Four story chapters">
+        <button class="chapter-card" type="button" data-chapter="0">
+          <span class="chapter-number">01</span>
+          <span class="chapter-card-copy"><strong>Hatching</strong><small>Noticing &amp; Kindness</small></span>
+          <span class="chapter-score"><b>0</b><small>/100 pts</small><i>Ready</i></span>
+        </button>
+        <button class="chapter-card" type="button" data-chapter="1">
+          <span class="chapter-number">02</span>
+          <span class="chapter-card-copy"><strong>Setting Out</strong><small>Spelling &amp; Courage</small></span>
+          <span class="chapter-score"><b>0</b><small>/100 pts</small><i>Ready</i></span>
+        </button>
+        <button class="chapter-card" type="button" data-chapter="2">
+          <span class="chapter-number">03</span>
+          <span class="chapter-card-copy"><strong>Winter</strong><small>Paths &amp; Teamwork</small></span>
+          <span class="chapter-score"><b>0</b><small>/100 pts</small><i>Ready</i></span>
+        </button>
+        <button class="chapter-card" type="button" data-chapter="3">
+          <span class="chapter-number">04</span>
+          <span class="chapter-card-copy"><strong>Homeward Light</strong><small>Belonging &amp; Growth</small></span>
+          <span class="chapter-score"><b>0</b><small>/100 pts</small><i>Ready</i></span>
+        </button>
+      </div>
+      <div class="title-buttons">
+        <button class="btn btn-adventure hidden" id="btnChallenge"><span class="btn-icon">00</span><span class="btn-copy"><strong>Meadow Adventure</strong><small>Choose a task · Every round is different</small></span><b>›</b></button>
+        <button class="btn btn-soft hidden" id="btnContinue"><span class="btn-icon">GO</span><span class="btn-copy"><strong>Continue</strong><small>Return to where you stopped</small></span><b>›</b></button>
+        <div class="title-small-actions">
+          <button class="btn btn-quiet" id="btnStartNew">Start Fresh</button>
+          <button class="btn btn-quiet" id="btnTitleSettings">Grown-Up Settings</button>
+        </div>
+      </div>
+      <p class="title-foot">Ages 5–8 · Every kind action lights the trail · Nothing is taken away</p>
+    </nav>
+    <div class="title-wind-note" aria-hidden="true"><span>—</span> NIGHT JOURNEY</div>
+  </div>
+</div>
+
+<!-- 章节封面 -->
+<div id="screenCover" class="screen screen-clear hidden">
+  <div class="cover-block">
+    <div class="cover-chip" id="coverChip">Chapter One</div>
+    <h2 class="cover-title" id="coverTitle">Hatching</h2>
+    <p class="cover-sub" id="coverSub"></p>
+    <div class="cover-dots" id="coverDots"></div>
+    <button class="btn btn-primary" id="btnCoverStart">Begin ▸</button>
+  </div>
+</div>
+
+<!-- 奖励弹层（成长羽毛 / 故事贴纸） -->
+<div id="screenReward" class="screen hidden">
+  <div class="panel reward-panel">
+    <div class="reward-pendant hidden" id="rewardPendant" role="img" aria-label="Reed-nest pendant">
+      <img class="reward-pendant-base" src="assets/scenes/story-overlays-v3/reed-pendant-unlit-web.webp?v=1" alt="">
+      <img class="reward-pendant-light light-one" src="assets/scenes/story-overlays-v3/growth-feather-light-web.webp?v=1" alt="">
+      <img class="reward-pendant-light light-two" src="assets/scenes/story-overlays-v3/growth-feather-light-web.webp?v=1" alt="">
+      <img class="reward-pendant-light light-three" src="assets/scenes/story-overlays-v3/growth-feather-light-web.webp?v=1" alt="">
+      <img class="reward-pendant-light light-four" src="assets/scenes/story-overlays-v3/growth-feather-light-web.webp?v=1" alt="">
+    </div>
+    <div class="reward-icon" id="rewardIcon">🪶</div>
+    <div class="reward-name" id="rewardName">You found a Growth Feather!</div>
+    <p class="reward-reason" id="rewardReason"></p>
+    <button class="btn btn-primary" id="btnRewardOk">Continue ▸</button>
+  </div>
+</div>
+
+<!-- 章节完成页 -->
+<div id="screenChapterEnd" class="screen hidden">
+  <div class="panel">
+    <div class="chapterend-star" aria-hidden="true">🌼</div>
+    <h2 id="chapterEndTitle">Chapter One Complete!</h2>
+    <div id="chapterEndEarned" class="earned-list"></div>
+    <button class="btn btn-primary" id="btnNextChapter">Next Chapter ▸</button>
+  </div>
+</div>
+
+<!-- 结局页 -->
+<div id="screenEnding" class="screen hidden">
+  <div class="panel ending-panel">
+    <div class="feather-bloom" aria-hidden="true">
+      <span style="--i:0">🪶</span><span style="--i:1">🪶</span>
+      <span style="--i:2">🪶</span><span style="--i:3">🪶</span>
+      <i>Feather</i>
+    </div>
+    <div class="keepsake-kicker">MY WAY HOME</div>
+    <h2 id="endingTitle">Home at Last · Keepsake Card</h2>
+    <div class="ending-stats" id="endingStats"></div>
+    <div class="ending-lines" id="endingLines"></div>
+    <div class="ending-buttons">
+      <button class="btn btn-primary" id="btnReplay">🌱 Play Again</button>
+      <button class="btn btn-soft" id="btnEndTitle">🏠 Title Screen</button>
+    </div>
+  </div>
+</div>
+
+<!-- 挑战模式 HUD：生命 / 关卡 / 分数 / 沙漏 -->
+<div id="chalHud" class="hidden">
+  <div class="chal-row">
+    <span id="chalHearts" class="chal-hearts">❤️❤️❤️</span>
+    <span id="chalLevel" class="chal-level">Level 1</span>
+    <span class="chal-score-wrap"><b id="chalScore">0 marks</b><i id="chalBest">Best 0</i></span>
+  </div>
+  <div id="chalTimer">
+    <div id="chalTimerFill"></div>
+    <span id="chalTimerText"></span>
+  </div>
+</div>
+
+<!-- 挑战模式：失败原因横幅 -->
+<div id="chalBanner" aria-live="polite"><span id="chalBannerText"></span></div>
+
+<!-- 挑战模式：关卡卡（目标说明） -->
+<div id="screenChalLevel" class="screen screen-clear hidden">
+  <div class="cover-block expedition-card">
+    <div class="cover-chip" id="chalLevelNum">🌿 First Stop · Lakeside Meadow</div>
+    <p class="chal-intro" id="chalLevelIntro"></p>
+    <h2 class="cover-title mission-question" id="chalLevelGame">Who would you like to help?</h2>
+    <p class="cover-sub" id="chalLevelGoal">Choose one of two little missions.</p>
+    <p class="chal-time" id="chalLevelTime">🍃 Wind-Chime Time: 45 sec</p>
+    <div id="chalMissionChoices" class="mission-choices"></div>
+    <p class="expedition-note">A wrong turn is okay. Rest at camp and try again.</p>
+    <button class="btn btn-primary hidden" id="btnChalStart">Set Out ▸</button>
+  </div>
+</div>
+
+<!-- 挑战模式：祝福三选一 -->
+<div id="screenBlessing" class="screen screen-clear hidden">
+  <div class="cover-block">
+    <div class="cover-chip">🌸 A Rainbow Blessing</div>
+    <h2 class="cover-title" style="font-size:1.5rem">Choose a blessing for the road</h2>
+    <div id="blessingCards" class="blessing-row"></div>
+  </div>
+</div>
+
+<!-- 挑战模式：结算 -->
+<div id="screenChalEnd" class="screen hidden">
+  <div class="panel ending-panel">
+    <div class="ending-mark" aria-hidden="true">🏆</div>
+    <h2 id="chalEndTitle">The Journey Pauses Here</h2>
+    <div class="ending-stats" id="chalEndScore">0 marks</div>
+    <div class="chal-end-sub" id="chalEndLevel"></div>
+    <div class="chal-end-sub" id="chalEndStats"></div>
+    <div class="chal-end-sub" id="chalEndBest"></div>
+    <p class="reward-reason" id="chalEndReason"></p>
+    <div class="ending-buttons">
+      <button class="btn btn-primary" id="btnChalRetry">🔄 Try Again</button>
+      <button class="btn btn-soft" id="btnChalExit">🏠 Title Screen</button>
+    </div>
+  </div>
+</div>
+
+<!-- 暂停菜单 -->
+<div id="screenPause" class="screen hidden">
+  <div class="panel">
+    <h2>Take a Little Break ☕</h2>
+    <div class="pause-buttons">
+      <button class="btn btn-primary" id="btnResume">▶ Keep Playing</button>
+      <button class="btn btn-soft" id="btnReplayChapter">🔄 Replay Chapter</button>
+      <button class="btn btn-soft" id="btnPauseSettings">⚙ Settings</button>
+      <button class="btn btn-soft" id="btnGoTitle">🏠 Title Screen</button>
+    </div>
+  </div>
+</div>
+
+<!-- 家长入口：简单算术题，避免儿童误触设置 -->
+<div id="screenParentGate" class="screen hidden">
+  <div class="panel parent-gate-panel">
+    <div class="parent-gate-kicker">FOR GROWN-UPS</div>
+    <h2>Grown-Up Gate</h2>
+    <p>Please solve this little sum</p>
+    <div id="parentGateQuestion" class="parent-gate-question">2 + 3 = ?</div>
+    <div id="parentGateChoices" class="parent-gate-choices"></div>
+    <p id="parentGateHint" class="parent-gate-hint" aria-live="polite"></p>
+    <button class="btn btn-soft" id="btnParentGateCancel">Back to the Game</button>
+  </div>
+</div>
+
+<!-- 设置 -->
+<div id="screenSettings" class="screen hidden">
+  <div class="panel settings-panel">
+    <h2>⚙ Settings</h2>
+    <label class="setting-row">
+      <span>🎵 Music Volume</span>
+      <input type="range" id="setMusic" min="0" max="100" value="70">
+    </label>
+    <label class="setting-row">
+      <span>🔔 Sound Effects</span>
+      <input type="range" id="setSfx" min="0" max="100" value="80">
+    </label>
+    <label class="setting-row toggle-row">
+      <span>🗣 English Narration</span>
+      <input type="checkbox" id="setNarration" checked>
+    </label>
+    <label class="setting-row toggle-row">
+      <span>💬 Show Subtitles</span>
+      <input type="checkbox" id="setSubtitle" checked>
+    </label>
+    <p class="settings-note">English narration plays automatically. Tap “Read Aloud” on any subtitle to hear it again.</p>
+    <button class="btn btn-primary" id="btnSettingsOk">Done ▸</button>
+  </div>
+</div>
+
+<noscript>This game needs JavaScript to play.</noscript>
+<!-- 开发调试：收集运行错误到 window.__errs__（可在控制台查看） -->
+<script>
+  window.__errs = [];
+  window.addEventListener('error', e => window.__errs.push((e.message || '') + ' @ ' + (e.filename || '') + ':' + e.lineno));
+  window.addEventListener('unhandledrejection', e => window.__errs.push('promise: ' + e.reason));
+</script>
+  <script type="module" src="js/main.js?v=57"></script>
+</body>
+</html>
